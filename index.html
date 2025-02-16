@@ -74,6 +74,17 @@
       animation: glow 3s infinite alternate;
     }
 
+    .chart-buttons {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      margin: 20px 0;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
     .error {
       color: #ff4444;
       font-weight: bold;
@@ -133,13 +144,19 @@
     <button onclick="exportToExcel()">📤 Export to Excel</button>
   </div>
 
+  <!-- Chart Buttons -->
+  <div class="chart-buttons">
+    <button onclick="toggleChart('balanceChart')">Toggle Balance Chart</button>
+    <button onclick="toggleChart('growthChart')">Toggle Growth Chart</button>
+  </div>
+
   <!-- Balance Chart -->
-  <div class="chart-container">
+  <div class="chart-container" id="balanceChartContainer">
     <canvas id="balanceChart"></canvas>
   </div>
 
   <!-- Growth Chart -->
-  <div class="chart-container">
+  <div class="chart-container" id="growthChartContainer">
     <canvas id="growthChart"></canvas>
   </div>
 
@@ -150,6 +167,14 @@
   </div>
 
   <script>
+    // Keamanan: Validasi input dan sanitasi data
+    const sanitizeInput = (value) => {
+      if (typeof value === 'string') {
+        return value.replace(/[^0-9.-]/g, ''); // Hanya angka, titik, dan minus
+      }
+      return value;
+    };
+
     let trades = JSON.parse(localStorage.getItem('trades')) || [];
     let initialCapital = parseFloat(localStorage.getItem('initialCapital')) || 5;
 
@@ -228,10 +253,23 @@
       }
     });
 
+    // Fungsi toggle chart
+    function toggleChart(chartId) {
+      const container = document.getElementById(chartId + 'Container');
+      container.classList.toggle('hidden');
+      
+      // Adjust chart size
+      if(chartId === 'balanceChart') {
+        balanceChart.resize();
+      } else {
+        growthChart.resize();
+      }
+    }
+
     // Core Functions
     function addTrade() {
-      const amount = parseFloat(document.getElementById('tradeAmount').value);
-      const profit = parseFloat(document.getElementById('tradeProfit').value);
+      const amount = parseFloat(sanitizeInput(document.getElementById('tradeAmount').value));
+      const profit = parseFloat(sanitizeInput(document.getElementById('tradeProfit').value));
       const date = document.getElementById('tradeDate').value || new Date().toISOString().split('T')[0];
       const currentBalance = calculateCurrentBalance();
 
@@ -302,7 +340,7 @@
     }
 
     function updateSummary() {
-      initialCapital = parseFloat(document.getElementById('initialCapital').value);
+      initialCapital = parseFloat(sanitizeInput(document.getElementById('initialCapital').value));
       localStorage.setItem('initialCapital', initialCapital);
 
       const currentBalance = calculateCurrentBalance();
@@ -356,58 +394,53 @@
           return;
         }
 
-        // Data untuk Excel
         const data = [
-          ['Date', 'Amount', 'Profit/Loss', 'ROI (%)', 'Growth (%)', 'Balance'],
+          [
+            { v: 'Date', s: { alignment: { horizontal: 'center' }, fill: { fgColor: { rgb: 'FFD3D3D3' } } } },
+            { v: 'Amount ($)', s: { alignment: { horizontal: 'center' } } },
+            { v: 'Profit/Loss ($)', s: { alignment: { horizontal: 'center' } } },
+            { v: 'ROI (%)', s: { alignment: { horizontal: 'center' } } },
+            { v: 'Growth (%)', s: { alignment: { horizontal: 'center' } } },
+            { v: 'Balance ($)', s: { alignment: { horizontal: 'center' } } }
+          ],
           ...trades.map((trade, index) => {
             const balance = initialCapital + trades.slice(0, index + 1).reduce((a, b) => a + b.profit, 0);
             const roi = (trade.profit / trade.amount) * 100;
             const growth = ((balance - initialCapital) / initialCapital) * 100;
+            
+            // Format warna untuk ROI
+            const roiStyle = {
+              alignment: { horizontal: 'center' },
+              font: { color: { rgb: roi >= 0 ? 'FF00FF00' : 'FFFF0000' } }
+            };
+            
             return [
-              trade.date,
-              trade.amount,
-              trade.profit,
-              roi,
-              growth,
-              balance
+              { v: trade.date, s: { alignment: { horizontal: 'center' } } },
+              { v: `$${trade.amount.toFixed(2)}`, t: 'n', s: { alignment: { horizontal: 'center' } } },
+              { v: `$${trade.profit.toFixed(2)}`, t: 'n', s: { 
+                alignment: { horizontal: 'center' },
+                font: { color: { rgb: trade.profit >= 0 ? 'FF00FF00' : 'FFFF0000' } } 
+              } },
+              { v: `${roi.toFixed(2)}%`, t: 'n', s: roiStyle },
+              { v: `${growth.toFixed(2)}%`, t: 'n', s: { 
+                alignment: { horizontal: 'center' },
+                font: { color: { rgb: growth >= 0 ? 'FF00FF00' : 'FFFF0000' } } 
+              } },
+              { v: `$${balance.toFixed(2)}`, t: 'n', s: { alignment: { horizontal: 'center' } } }
             ];
           })
         ];
 
-        // Membuat worksheet
-        const ws = XLSX.utils.aoa_to_sheet(data);
-
-        // Format angka
-        const numberFormat = '0.00';
-        const range = XLSX.utils.decode_range(ws['!ref']);
-        for (let R = 1; R <= range.e.r; ++R) {
-          for (let C = 1; C <= 5; ++C) { // Kolom B-F
-            const cell = XLSX.utils.encode_cell({r:R, c:C});
-            if (ws[cell]) {
-              if (C === 3 || C === 5) { // Kolom Profit/Loss dan Balance
-                ws[cell].z = numberFormat;
-              } else if (C === 4 || C === 5) { // Kolom ROI dan Growth
-                ws[cell].z = numberFormat + '%';
-              }
-            }
-          }
-        }
-
-        // Mengatur lebar kolom
+        const ws = XLSX.utils.aoa_to_sheet(data, { cellStyles: true });
+        
+        // Atur lebar kolom
         ws['!cols'] = [
-          { wch: 15 }, // Date
-          { wch: 12 }, // Amount
-          { wch: 12 }, // Profit/Loss
-          { wch: 10 }, // ROI (%)
-          { wch: 12 }, // Growth (%)
-          { wch: 12 }  // Balance
+          { wch: 15 }, { wch: 12 }, { wch: 15 }, 
+          { wch: 12 }, { wch: 12 }, { wch: 15 }
         ];
 
-        // Membuat workbook
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, 'Trading Journal');
-
-        // Menyimpan file
         XLSX.writeFile(wb, `trading_journal_${new Date().toISOString().split('T')[0]}.xlsx`);
 
       } catch (error) {
@@ -432,4 +465,4 @@
     updateAll();
   </script>
 </body>
-</html>
+  </html>

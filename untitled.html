@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Trading Journal Pro</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    /* Dark Neon Theme */
+    body {
+      font-family: 'Arial', sans-serif;
+      background-color: #000;
+      color: #fff;
+      margin: 0;
+      padding: 20px;
+      overflow-x: hidden;
+    }
+
+    h1 {
+      text-align: center;
+      font-size: 2.5rem;
+      color: #00f7ff;
+      text-shadow: 0 0 10px #00f7ff, 0 0 20px #00f7ff;
+      margin-bottom: 30px;
+    }
+
+    .section {
+      margin: 20px auto;
+      padding: 20px;
+      background: rgba(0, 0, 0, 0.8);
+      border-radius: 15px;
+      border: 2px solid #00f7ff;
+      box-shadow: 0 0 10px #00f7ff, 0 0 20px #00f7ff;
+      max-width: 800px;
+      animation: glow 3s infinite alternate;
+    }
+
+    @keyframes glow {
+      0% { border-color: #00f7ff; box-shadow: 0 0 10px #00f7ff, 0 0 20px #00f7ff; }
+      50% { border-color: #8a2be2; box-shadow: 0 0 10px #8a2be2, 0 0 20px #8a2be2; }
+      100% { border-color: #00f7ff; box-shadow: 0 0 10px #00f7ff, 0 0 20px #00f7ff; }
+    }
+
+    input, button {
+      margin: 10px 0;
+      padding: 10px;
+      border: 1px solid #00f7ff;
+      border-radius: 5px;
+      background: rgba(0, 0, 0, 0.5);
+      color: #fff;
+      font-size: 1rem;
+      transition: all 0.3s ease;
+    }
+
+    input:focus, button:hover {
+      border-color: #8a2be2;
+      box-shadow: 0 0 10px #8a2be2, 0 0 20px #8a2be2;
+    }
+
+    button {
+      cursor: pointer;
+      background: linear-gradient(45deg, #00f7ff, #8a2be2);
+      color: #000;
+      font-weight: bold;
+    }
+
+    .chart-container {
+      width: 100%;
+      max-width: 800px;
+      margin: 20px auto;
+      background: rgba(0, 0, 0, 0.8);
+      border-radius: 15px;
+      border: 2px solid #00f7ff;
+      box-shadow: 0 0 10px #00f7ff, 0 0 20px #00f7ff;
+      padding: 20px;
+      animation: glow 3s infinite alternate;
+    }
+
+    .error {
+      color: #ff4444;
+      font-weight: bold;
+      text-shadow: 0 0 5px #ff4444;
+    }
+
+    .roi-positive { color: #00ff00; text-shadow: 0 0 5px #00ff00; }
+    .roi-negative { color: #ff4444; text-shadow: 0 0 5px #ff4444; }
+    .winrate-positive { color: #00ff00; text-shadow: 0 0 5px #00ff00; }
+    .winrate-negative { color: #ff4444; text-shadow: 0 0 5px #ff4444; }
+
+    ul {
+      list-style: none;
+      padding: 0;
+    }
+
+    li {
+      padding: 15px;
+      margin: 10px 0;
+      background: rgba(0, 0, 0, 0.7);
+      border-radius: 10px;
+      border: 1px solid #00f7ff;
+      box-shadow: 0 0 5px #00f7ff, 0 0 10px #00f7ff;
+      animation: glow 3s infinite alternate;
+    }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.4/xlsx.full.min.js"></script>
+</head>
+<body>
+  <h1>💰 Trading Journal Pro</h1>
+
+  <!-- Initial Capital Section -->
+  <div class="section">
+    <h2>Initial Capital</h2>
+    <input type="number" id="initialCapital" value="5">
+  </div>
+
+  <!-- Add Trade Section -->
+  <div class="section">
+    <h2>➕ Add New Trade</h2>
+    <input type="number" id="tradeAmount" placeholder="Trade Amount">
+    <input type="number" id="tradeProfit" placeholder="Profit/Loss">
+    <input type="date" id="tradeDate">
+    <button onclick="addTrade()">Add Trade</button>
+    <p class="error" id="errorMessage"></p>
+  </div>
+
+  <!-- Summary Section -->
+  <div class="section">
+    <h2>📊 Summary</h2>
+    <p>Current Balance: $<span id="currentBalance">5</span></p>
+    <p>Total Profit: $<span id="totalProfit">0</span></p>
+    <p>Total Loss: $<span id="totalLoss">0</span></p>
+    <p>ROI: <span id="roi" class="roi-positive">0%</span></p>
+    <p>Winrate: <span id="winrate" class="winrate-positive">0%</span></p>
+    <button onclick="exportToExcel()">📤 Export to Excel</button>
+  </div>
+
+  <!-- Balance Chart -->
+  <div class="chart-container">
+    <canvas id="balanceChart"></canvas>
+  </div>
+
+  <!-- Growth Chart -->
+  <div class="chart-container">
+    <canvas id="growthChart"></canvas>
+  </div>
+
+  <!-- Trade History -->
+  <div class="section">
+    <h2>📜 Trade History</h2>
+    <ul id="tradeHistory"></ul>
+  </div>
+
+  <script>
+    let trades = JSON.parse(localStorage.getItem('trades')) || [];
+    let initialCapital = parseFloat(localStorage.getItem('initialCapital')) || 5;
+
+    // Initialize Balance Chart
+    const balanceCtx = document.getElementById('balanceChart').getContext('2d');
+    const balanceChart = new Chart(balanceCtx, {
+      type: 'line',
+      data: {
+        labels: ['Initial'],
+        datasets: [{
+          label: 'Balance History',
+          data: [initialCapital],
+          borderColor: '#00f7ff',
+          borderWidth: 2,
+          pointBackgroundColor: ['#8a2be2'],
+          pointBorderColor: '#00f7ff',
+          pointRadius: 5,
+          tension: 0.1,
+        }]
+      },
+      options: {
+        scales: {
+          y: { 
+            beginAtZero: false,
+            grid: { color: 'rgba(0, 247, 255, 0.1)' },
+            ticks: { color: '#00f7ff' }
+          },
+          x: {
+            grid: { color: 'rgba(0, 247, 255, 0.1)' },
+            ticks: { color: '#00f7ff' }
+          }
+        },
+        plugins: {
+          legend: { labels: { color: '#00f7ff' } }
+        }
+      }
+    });
+
+    // Initialize Growth Chart
+    const growthCtx = document.getElementById('growthChart').getContext('2d');
+    const growthChart = new Chart(growthCtx, {
+      type: 'line',
+      data: {
+        labels: ['Initial'],
+        datasets: [{
+          label: 'Portfolio Growth (%)',
+          data: [0],
+          borderColor: '#00ff00',
+          borderWidth: 2,
+          pointBackgroundColor: ['#8a2be2'],
+          pointBorderColor: '#00f7ff',
+          pointRadius: 5,
+          tension: 0.1,
+        }]
+      },
+      options: {
+        scales: {
+          y: { 
+            beginAtZero: true,
+            grid: { color: 'rgba(0, 247, 255, 0.1)' },
+            ticks: { 
+              color: '#00f7ff',
+              callback: function(value) {
+                return value + '%';
+              }
+            }
+          },
+          x: {
+            grid: { color: 'rgba(0, 247, 255, 0.1)' },
+            ticks: { color: '#00f7ff' }
+          }
+        },
+        plugins: {
+          legend: { labels: { color: '#00f7ff' } }
+        }
+      }
+    });
+
+    // Core Functions
+    function addTrade() {
+      const amount = parseFloat(document.getElementById('tradeAmount').value);
+      const profit = parseFloat(document.getElementById('tradeProfit').value);
+      const date = document.getElementById('tradeDate').value || new Date().toISOString().split('T')[0];
+      const currentBalance = calculateCurrentBalance();
+
+      // Validation
+      if (isNaN(amount) || amount <= 0) {
+        showError('Amount tidak valid!');
+        return;
+      }
+      if (isNaN(profit)) {
+        showError('Profit/Loss tidak valid!');
+        return;
+      }
+      if (currentBalance <= 0) {
+        showError('Saldo sudah 0, tidak bisa trading!');
+        return;
+      }
+      if (amount > currentBalance) {
+        showError('Jumlah melebihi saldo!');
+        return;
+      }
+
+      trades.push({ amount, profit, date });
+      localStorage.setItem('trades', JSON.stringify(trades));
+      updateAll();
+    }
+
+    function deleteTrade(index) {
+      trades.splice(index, 1);
+      localStorage.setItem('trades', JSON.stringify(trades));
+      updateAll();
+    }
+
+    function updateAll() {
+      updateSummary();
+      renderTrades();
+      updateCharts();
+      document.getElementById('errorMessage').textContent = '';
+    }
+
+    function updateCharts() {
+      const balanceHistory = trades.reduce((acc, trade) => {
+        const lastBalance = acc.length > 0 ? acc[acc.length - 1] : initialCapital;
+        return [...acc, lastBalance + trade.profit];
+      }, []);
+
+      const growthData = balanceHistory.map(balance => {
+        return ((balance - initialCapital) / initialCapital) * 100;
+      });
+
+      // Update Balance Chart
+      balanceChart.data.labels = ['Initial', ...trades.map((_, i) => `Trade ${i + 1}`)];
+      balanceChart.data.datasets[0].data = [initialCapital, ...balanceHistory];
+      balanceChart.data.datasets[0].pointBackgroundColor = [
+        '#8a2be2',
+        ...trades.map(trade => trade.profit >= 0 ? '#00ff00' : '#ff4444')
+      ];
+      balanceChart.update();
+
+      // Update Growth Chart
+      growthChart.data.labels = ['Initial', ...trades.map((_, i) => `Trade ${i + 1}`)];
+      growthChart.data.datasets[0].data = [0, ...growthData];
+      growthChart.data.datasets[0].borderColor = growthData.slice(-1)[0] >= 0 ? '#00ff00' : '#ff4444';
+      growthChart.data.datasets[0].pointBackgroundColor = [
+        '#8a2be2',
+        ...growthData.slice(1).map(val => val >= 0 ? '#00ff00' : '#ff4444')
+      ];
+      growthChart.update();
+    }
+
+    function updateSummary() {
+      initialCapital = parseFloat(document.getElementById('initialCapital').value);
+      localStorage.setItem('initialCapital', initialCapital);
+
+      const currentBalance = calculateCurrentBalance();
+      const totalProfit = trades.filter(t => t.profit > 0).reduce((a, b) => a + b.profit, 0);
+      const totalLoss = trades.filter(t => t.profit < 0).reduce((a, b) => a + Math.abs(b.profit), 0);
+      
+      // ROI Calculation
+      const roi = ((currentBalance - initialCapital) / initialCapital) * 100;
+      const roiElement = document.getElementById('roi');
+      roiElement.textContent = `${roi.toFixed(2)}%`;
+      roiElement.className = roi >= 0 ? 'roi-positive' : 'roi-negative';
+
+      // Winrate Calculation
+      const totalTrades = trades.length;
+      const winTrades = trades.filter(t => t.profit > 0).length;
+      const winrate = totalTrades > 0 ? (winTrades / totalTrades) * 100 : 0;
+      const winrateElement = document.getElementById('winrate');
+      winrateElement.textContent = `${winrate.toFixed(2)}%`;
+      winrateElement.className = winrate >= 50 ? 'winrate-positive' : 'winrate-negative';
+
+      // Update Display
+      document.getElementById('currentBalance').textContent = currentBalance.toFixed(2);
+      document.getElementById('totalProfit').textContent = totalProfit.toFixed(2);
+      document.getElementById('totalLoss').textContent = totalLoss.toFixed(2);
+    }
+
+    function renderTrades() {
+      const historyElement = document.getElementById('tradeHistory');
+      historyElement.innerHTML = trades.map((trade, index) => {
+        const balanceAfterTrade = initialCapital + trades.slice(0, index + 1).reduce((a, b) => a + b.profit, 0);
+        const roiPerTrade = (trade.profit / trade.amount) * 100;
+        const growth = ((balanceAfterTrade - initialCapital) / initialCapital) * 100;
+        return `
+          <li>
+            📅 ${trade.date} | 
+            💰 $${trade.amount.toFixed(2)} | 
+            📈 $${trade.profit.toFixed(2)} | 
+            🎯 <span class="${roiPerTrade >= 0 ? 'roi-positive' : 'roi-negative'}">${roiPerTrade.toFixed(2)}%</span> |
+            📊 <span class="${growth >= 0 ? 'roi-positive' : 'roi-negative'}">${growth.toFixed(2)}%</span> |
+            💵 $${balanceAfterTrade.toFixed(2)}
+            <button onclick="deleteTrade(${index})">🗑️ Delete</button>
+          </li>
+        `;
+      }).join('');
+    }
+
+    function exportToExcel() {
+      try {
+        if (trades.length === 0) {
+          showError('Tidak ada data untuk di-export!');
+          return;
+        }
+
+        // Data untuk Excel
+        const data = [
+          ['Date', 'Amount', 'Profit/Loss', 'ROI (%)', 'Growth (%)', 'Balance'],
+          ...trades.map((trade, index) => {
+            const balance = initialCapital + trades.slice(0, index + 1).reduce((a, b) => a + b.profit, 0);
+            const roi = (trade.profit / trade.amount) * 100;
+            const growth = ((balance - initialCapital) / initialCapital) * 100;
+            return [
+              trade.date,
+              trade.amount,
+              trade.profit,
+              roi,
+              growth,
+              balance
+            ];
+          })
+        ];
+
+        // Membuat worksheet
+        const ws = XLSX.utils.aoa_to_sheet(data);
+
+        // Format angka
+        const numberFormat = '0.00';
+        const range = XLSX.utils.decode_range(ws['!ref']);
+        for (let R = 1; R <= range.e.r; ++R) {
+          for (let C = 1; C <= 5; ++C) { // Kolom B-F
+            const cell = XLSX.utils.encode_cell({r:R, c:C});
+            if (ws[cell]) {
+              if (C === 3 || C === 5) { // Kolom Profit/Loss dan Balance
+                ws[cell].z = numberFormat;
+              } else if (C === 4 || C === 5) { // Kolom ROI dan Growth
+                ws[cell].z = numberFormat + '%';
+              }
+            }
+          }
+        }
+
+        // Mengatur lebar kolom
+        ws['!cols'] = [
+          { wch: 15 }, // Date
+          { wch: 12 }, // Amount
+          { wch: 12 }, // Profit/Loss
+          { wch: 10 }, // ROI (%)
+          { wch: 12 }, // Growth (%)
+          { wch: 12 }  // Balance
+        ];
+
+        // Membuat workbook
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Trading Journal');
+
+        // Menyimpan file
+        XLSX.writeFile(wb, `trading_journal_${new Date().toISOString().split('T')[0]}.xlsx`);
+
+      } catch (error) {
+        showError('Gagal mengekspor data: ' + error.message);
+        console.error('Export error:', error);
+      }
+    }
+
+    function showError(message) {
+      document.getElementById('errorMessage').textContent = message;
+      setTimeout(() => {
+        document.getElementById('errorMessage').textContent = '';
+      }, 3000);
+    }
+
+    function calculateCurrentBalance() {
+      return trades.reduce((balance, trade) => balance + trade.profit, initialCapital);
+    }
+
+    // Initial Load
+    document.getElementById('initialCapital').value = initialCapital;
+    updateAll();
+  </script>
+</body>
+</html>
